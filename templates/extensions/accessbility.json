@@ -1,0 +1,4 @@
+{
+  "wcag_criterion": { "type": "string", "description": "Violated WCAG standard (e.g., WCAG 2.1 AA 1.4.3 Contrast)", "required": true },
+  "assistive_tech_used": { "type": "string", "description": "Tool active during bug (e.g., VoiceOver, NVDA, Keyboard only)", "required": true }
+}

@@ -1,0 +1,5 @@
+{
+  "browser_viewport": { "type": "string", "description": "Browser name, version, and screen dimensions (e.g. Chrome 122 / 1920x1080)", "required": true },
+  "visual_evidence": { "type": "string", "description": "Screenshot or screen recording link (mandatory)", "required": true },
+  "affected_component_page": { "type": "string", "description": "UI component name or page route", "required": true }
+}

@@ -1,0 +1,4 @@
+{
+  "locale_language": { "type": "string", "description": "Target locale code (e.g., ja-JP, fr-CA)", "required": true },
+  "string_comparison": { "type": "string", "description": "Source string vs incorrect rendered string", "required": true }
+}

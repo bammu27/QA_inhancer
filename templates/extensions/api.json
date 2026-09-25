@@ -1,0 +1,7 @@
+{
+  "endpoint_http_method": { "type": "string", "description": "HTTP Method and Path (e.g., POST /api/v1/checkout)", "required": true },
+  "request_payload": { "type": "string", "description": "Headers and body sent in request", "required": true },
+  "response_payload": { "type": "string", "description": "Server response body received", "required": true },
+  "status_code": { "type": "integer", "description": "HTTP status code returned (e.g., 500)", "required": true },
+  "related_service": { "type": "string", "description": "Microservice or backend service name", "required": false }
+}

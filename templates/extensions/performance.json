@@ -1,0 +1,5 @@
+{
+  "metric_comparison": { "type": "string", "description": "Baseline metric vs observed metric (e.g., Expected < 200ms, Observed 3500ms)", "required": true },
+  "load_conditions": { "type": "string", "description": "System state (e.g., 500 concurrent users, peak load)", "required": true },
+  "resource_utilization": { "type": "string", "description": "CPU, memory, disk I/O, or network usage data", "required": false }
+}

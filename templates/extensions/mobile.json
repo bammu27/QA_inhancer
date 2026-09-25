@@ -1,0 +1,6 @@
+{
+  "device_model": { "type": "string", "description": "Hardware model (e.g., iPhone 15 Pro, Samsung Galaxy S23)", "required": true },
+  "os_version": { "type": "string", "description": "Operating system version (e.g., iOS 17.4, Android 14)", "required": true },
+  "app_build_number": { "type": "string", "description": "Application version or build hash", "required": true },
+  "crash_log_stack_trace": { "type": "string", "description": "Raw crash stack trace or system log output", "required": false }
+}

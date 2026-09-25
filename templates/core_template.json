@@ -1,0 +1,12 @@
+{
+  "title": { "type": "string", "description": "Short summary of the bug", "required": true },
+  "category": { "type": "string", "description": "Bug category (UI, API, Mobile, Security, Performance, Accessibility, Localization, Data Integrity)", "required": true },
+  "severity": { "type": "string", "description": "Impact level (Critical, High, Medium, Low)", "required": true },
+  "priority": { "type": "string", "description": "Fix urgency (P0, P1, P2, P3)", "required": true },
+  "environment": { "type": "string", "description": "OS, browser, or environment details", "required": true },
+  "steps_to_reproduce": { "type": "array", "items": "string", "description": "Ordered steps to hit the bug", "required": true },
+  "expected_result": { "type": "string", "description": "What should happen", "required": true },
+  "actual_result": { "type": "string", "description": "What actually happened", "required": true },
+  "frequency": { "type": "string", "description": "How often it occurs (Every time, Intermittent, Once)", "required": true },
+  "evidence": { "type": "string", "description": "URLs, attachment links, or raw error text", "required": true }
+}

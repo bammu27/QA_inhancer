@@ -1,0 +1,8 @@
+{
+  "vulnerability_type": { "type": "string", "description": "Type of flaw (e.g., SQLi, XSS, IDOR, CSRF)", "required": true },
+  "cvss_score": { "type": "string", "description": "CVSS v3/v4 numerical or qualitative score", "required": false },
+  "affected_component": { "type": "string", "description": "Vulnerable endpoint, input field, or service", "required": true },
+  "impact_data_at_risk": { "type": "string", "description": "Scope of exposure (PII, DB access, RCE)", "required": true },
+  "proof_of_concept": { "type": "string", "description": "Steps or payload used to demonstrate exploitability", "required": true },
+  "disclosure_sensitivity_flag": { "type": "string", "description": "Sensitivity level (e.g., Public, Internal, embargoed)", "required": true }
+}
