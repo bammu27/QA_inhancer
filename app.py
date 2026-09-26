@@ -8,6 +8,10 @@ from pipeline.clarification import (
     apply_clarifications,
 )
 from pipeline.llm_reasoning import reason_and_annotate, LLMReasoningError
+from pipeline.markdown_generator import render_markdown, MarkdownGenerationError
+from pipeline.review import review_and_approve
+from pipeline.email_dispatch import send_report
+import config
 
 st.set_page_config(page_title="Defect Description Enhancer", layout="centered")
 st.title("Defect Description Enhancer")
@@ -124,6 +128,86 @@ if "report" in st.session_state:
             with col2:
                 st.caption("After")
                 st.json(st.session_state["report"])
+
+    st.divider()
+    st.subheader("Markdown Preview")
+
+    report_in_state = st.session_state.get("report")
+
+    if report_in_state is None or report_in_state.get("developer_notes") is None:
+        st.info("Run AI reasoning first to generate the Markdown preview.")
+    else:
+        try:
+            final_markdown = render_markdown(report_in_state)
+            st.session_state["final_markdown"] = final_markdown
+        except MarkdownGenerationError as e:
+            st.error(f"Markdown generation failed: {e}")
+            st.session_state.pop("final_markdown", None)
+
+        if "final_markdown" in st.session_state:
+            st.markdown(st.session_state["final_markdown"])
+
+    st.divider()
+    st.subheader("QA Review")
+
+    final_markdown = st.session_state.get("final_markdown")
+
+    if final_markdown is None:
+        st.info("Generate the Markdown preview first.")
+    else:
+        review_decision = st.session_state.get("review_decision")
+
+        if review_decision is None:
+            developer_email = st.text_input(
+                "Developer email",
+                value=config.DEFAULT_DEVELOPER_EMAIL,
+                key="developer_email_input",
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Approve & Send", type="primary"):
+                    if not developer_email or not developer_email.strip():
+                        st.warning("Enter a developer email before sending.")
+                    else:
+                        st.session_state["review_decision"] = review_and_approve("approve")
+                        with st.spinner("Sending email..."):
+                            result = send_report(final_markdown, developer_email.strip())
+                        st.session_state["send_result"] = result
+                        st.rerun()
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state["review_decision"] = review_and_approve("cancel")
+                    st.rerun()
+
+        elif review_decision is False:
+            st.warning("Report cancelled. No email was sent.")
+            if st.button("Start New Report"):
+                for key in ("report", "final_markdown", "review_decision", "send_result"):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        elif review_decision is True:
+            result = st.session_state.get("send_result")
+            if result is None:
+                st.error("Approved, but no send was attempted — this shouldn't happen.")
+            elif result["status"] == "sent":
+                st.success(f"\u2705 Report sent to {st.session_state.get('developer_email_input', '')}.")
+            else:
+                st.error(f"\u274c Send failed: {result['error']}")
+                if st.button("Retry Send"):
+                    with st.spinner("Retrying..."):
+                        retry_result = send_report(
+                            final_markdown,
+                            st.session_state.get("developer_email_input", "").strip(),
+                        )
+                    st.session_state["send_result"] = retry_result
+                    st.rerun()
+
+            if st.button("Start New Report", key="start_new_after_send"):
+                for key in ("report", "final_markdown", "review_decision", "send_result"):
+                    st.session_state.pop(key, None)
+                st.rerun()
 
     st.divider()
     st.subheader("Current Report Object")
