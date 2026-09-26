@@ -23,22 +23,24 @@ CORE_FIELDS = [
     "evidence",
 ]
 
+# Fields where the LLM is allowed to reason/infer from context rather than
+# requiring literal text. Anything not in this set must be extracted verbatim
+# (or marked missing) — never inferred.
+#
+# expected_result is included because testers almost never write "Expected: X"
+# explicitly — it's implied by the nature of the bug (e.g. a checkout endpoint
+# throwing a 500 implies "checkout should complete successfully"). Treating it
+# as strict caused it to come back missing in most real-world reports.
 
-class FieldObject(BaseModel):
-    value: Optional[Union[str, list[str]]] = None
-    source: Literal["tester_provided", "ai_annotated", "missing"]
+SEMANTIC_FIELDS = {
+    "severity",
+    "priority",
+    "frequency",
+    "expected_result",
+}
 
-    @field_validator("value", mode="before")
-    def format_value(cls, v):
-        if v is None:
-            return None
-        if isinstance(v, list):
-            cleaned = [str(item).strip() for item in v if str(item).strip()]
-            return "\n".join(cleaned) if cleaned else None
-        if isinstance(v, str):
-            v_str = v.strip()
-            return v_str if v_str else None
-        return str(v)
+
+from models.schemas import FieldObject, ReportObject
 
 
 def _load_field_descriptions(category: str) -> Dict[str, str]:
@@ -74,9 +76,21 @@ def _load_field_descriptions(category: str) -> Dict[str, str]:
     return descriptions
 
 
+def _format_field_list(fields: list[str], descriptions: Dict[str, str]) -> str:
+    lines = []
+    for f in fields:
+        desc = descriptions.get(f, "")
+        lines.append(f"- '{f}': {desc}" if desc else f"- '{f}'")
+    return "\n".join(lines)
+
+
 def extract_fields(raw_text: str, template: dict) -> dict:
     """
     Executes one Groq LLM call over raw_text to extract predefined template fields.
+
+    Strict fields are extracted verbatim from the text (source="tester_provided")
+    or marked missing. Semantic fields (see SEMANTIC_FIELDS) may additionally be
+    inferred from context when not stated explicitly (source="ai_annotated").
 
     Args:
         raw_text: Freeform bug description entered by QA tester.
@@ -88,7 +102,8 @@ def extract_fields(raw_text: str, template: dict) -> dict:
             "category": "api",
             "core_fields": {
                 "title": {"value": "...", "source": "tester_provided"},
-                "severity": {"value": null, "source": "missing"}
+                "severity": {"value": "High", "source": "ai_annotated"},
+                "priority": {"value": null, "source": "missing"}
             },
             "category_fields": {
                 "endpoint": {"value": "...", "source": "tester_provided"}
@@ -102,38 +117,108 @@ def extract_fields(raw_text: str, template: dict) -> dict:
     required_fields = template.get("required_fields", [])
     field_descriptions = _load_field_descriptions(category)
 
-    target_fields_text = []
-    for f in required_fields:
-        desc = field_descriptions.get(f, "")
-        if desc:
-            target_fields_text.append(f"- '{f}': {desc}")
-        else:
-            target_fields_text.append(f"- '{f}'")
-    fields_formatted = "\n".join(target_fields_text)
+    strict_fields = [f for f in required_fields if f not in SEMANTIC_FIELDS]
+    semantic_fields = [f for f in required_fields if f in SEMANTIC_FIELDS]
+
+    strict_block = _format_field_list(strict_fields, field_descriptions)
+    semantic_block = _format_field_list(semantic_fields, field_descriptions)
+
+    semantic_section = ""
+    if semantic_fields:
+        semantic_section = f"""
+SEMANTIC FIELDS (reasoning permitted):
+{semantic_block}
+
+For these fields ONLY, you may infer a reasonable value from context even if
+it is not stated explicitly — e.g. "the app crashes for every user on login"
+implies high severity. Base every inference strictly on details present in
+the raw text; do not use outside/world knowledge.
+- If the tester explicitly stated the value: "source": "tester_provided"
+- If you inferred it from context: "source": "ai_annotated"
+- If there is not enough context to infer it at all: "value": null, "source": "missing"
+"""
+
+    FORMAT_GUIDANCE = """
+INPUT FORMAT WARNING:
+Raw bug text almost never looks like clean prose. It may be a copy-pasted log
+dump, a JSON blob, a chat transcript, a ticket-tool export, or a mix of all
+three, with arbitrary or inconsistent section labels (e.g. "TRACELOG",
+"ENVDATA", "REPRO_STEPS_TRACELOG", "<<<PAYLOAD>>>", or no labels at all). Do
+NOT rely on section headers matching field names literally — match by MEANING,
+regardless of what a block happens to be titled or how it's punctuated.
+
+Below are common real-world shapes for the trickiest fields. These are
+illustrations of the PATTERN to recognize, not an exhaustive list — the same
+logic applies to any field, in any format not shown here.
+
+— steps_to_reproduce —
+Look for ANY sequence of user/system actions and their results: numbered
+fragments ("step1:", "step2:"), arrow chains ("click X -> response Y"), a
+chat-style walkthrough, or a list of UI interactions. Convert whatever you
+find into a clean ordered list, one action+result per list item.
+    Input:  "step1: add_to_cart -> payload {...} -> 200 ok
+             step2: click checkout -> POST /checkout -> 500 error"
+    Output: ["Added item to cart; received 200 OK",
+             "Clicked checkout, triggering POST /checkout; received 500 Internal Server Error"]
+Ignore blocks that are clearly speculation or debugging hypotheses rather
+than actions actually taken (e.g. titled "RANDOM TROUBLESHOOTING NOTES",
+"RANTS", "possible causes") — never treat those as steps_to_reproduce, even
+if they mention something the tester did or suspects.
+
+— environment —
+Often arrives as a terse key=value or key: value line rather than prose, and
+the keys are rarely "OS" / "Browser" verbatim.
+    Input:  'ENVDATA:: OS="Windows 11" UA="Mozilla/5.0 ..." BROWSER="Chrome 122"'
+    Output: "OS: Windows 11, Browser: Chrome 122, UA: Mozilla/5.0 ..."
+
+— evidence —
+This is the one field where raw, messy diagnostic text (stack traces, log
+lines, HAR-style network entries) IS the correct value — do not clean it up
+into prose, just pull the relevant raw fragment(s) as-is.
+
+— expected_result (semantic field) —
+This is almost never stated explicitly. Infer it from what a working version
+of the described flow would do, using ONLY the flow/feature/endpoint actually
+named in the text — never generic assumptions.
+    Input describes: a POST to /api/v1/checkout returning 500 instead of
+                      completing the order
+    Output: "Checkout request should complete successfully and return a
+             success response" (source: "ai_annotated")
+If the text doesn't name what the feature was supposed to do at all (no
+endpoint, no described user goal), leave it missing rather than guessing.
+
+SELF-CHECK before you finalize: go back through every target field name in
+the lists below one more time and confirm you didn't skip one just because
+its content wasn't under a header that matched the field's name.
+"""
 
     system_prompt = f"""You are an expert QA bug report extraction assistant.
 Your job is to read raw, unstructured bug report text provided by a QA tester and extract specific fields.
+{FORMAT_GUIDANCE}
+STRICT FIELDS (literal extraction only):
+{strict_block}
 
-TARGET FIELDS TO EXTRACT:
-{fields_formatted}
-
-EXTRACTION RULES:
-1. For each target field listed above, inspect the raw text thoroughly.
-2. If explicit or strongly implied information for the field is present in the raw text:
-   - "value": string (or list of step strings for steps_to_reproduce) containing the exact extracted content.
-   - "source": "tester_provided"
-3. If the field is absent or not mentioned in the raw text:
-   - "value": null
-   - "source": "missing"
-4. NEVER invent or fabricate facts not supported by the raw text.
-5. Every single target field name listed above MUST appear in the output.
+For these fields, extract ONLY information explicitly or near-explicitly present
+in the raw text. NEVER invent or infer facts not supported by the raw text.
+- "value": string (or list of step strings for steps_to_reproduce) containing the exact extracted content.
+- "source": "tester_provided"
+- If absent: "value": null, "source": "missing"
+{semantic_section}
+GENERAL RULES:
+1. Inspect the raw text thoroughly for every target field, regardless of formatting or section labels — see INPUT FORMAT WARNING above.
+2. Every single target field name listed above MUST appear in the output.
+3. Never fabricate information that has no basis anywhere in the raw text, even for semantic fields.
 
 Output MUST be a JSON object containing an "extracted_fields" dictionary mapping field names to field objects.
 Example output format:
 {{
   "extracted_fields": {{
     "title": {{"value": "Login button 500 error", "source": "tester_provided"}},
-    "severity": {{"value": null, "source": "missing"}}
+    "steps_to_reproduce": {{"value": ["Step one text", "Step two text"], "source": "tester_provided"}},
+    "environment": {{"value": "OS: Windows 11, Browser: Chrome 122", "source": "tester_provided"}},
+    "expected_result": {{"value": "Checkout should complete successfully", "source": "ai_annotated"}},
+    "severity": {{"value": "High", "source": "ai_annotated"}},
+    "priority": {{"value": null, "source": "missing"}}
   }}
 }}"""
 
@@ -168,19 +253,29 @@ Example output format:
     for field_name in required_fields:
         raw_field_obj = extracted_data.get(field_name) if isinstance(extracted_data, dict) else None
 
-        if not raw_field_obj or not isinstance(raw_field_obj, dict):
-            val = None
-            src = "missing"
-        else:
+        val = None
+        src = "missing"
+        if isinstance(raw_field_obj, dict):
             val = raw_field_obj.get("value")
-            src = raw_field_obj.get("source")
+            src = raw_field_obj.get("source", "missing")
 
-        if val is not None and str(val).strip() != "":
-            clean_val = str(val).strip() if not isinstance(val, list) else "\n".join([str(x).strip() for x in val if str(x).strip()])
-            if clean_val:
-                pydantic_obj = FieldObject(value=clean_val, source="tester_provided")
-            else:
-                pydantic_obj = FieldObject(value=None, source="missing")
+        if val is not None:
+            clean_val = (
+                "\n".join([str(x).strip() for x in val if str(x).strip()])
+                if isinstance(val, list)
+                else str(val).strip()
+            )
+        else:
+            clean_val = None
+
+        if clean_val:
+            # Honor the LLM's reported source, but never let a strict field
+            # come back as ai_annotated — clamp it defensively.
+            if src not in ("tester_provided", "ai_annotated"):
+                src = "tester_provided"
+            if field_name not in SEMANTIC_FIELDS and src == "ai_annotated":
+                src = "tester_provided"
+            pydantic_obj = FieldObject(value=clean_val, source=src)
         else:
             pydantic_obj = FieldObject(value=None, source="missing")
 
@@ -189,18 +284,8 @@ Example output format:
             "source": pydantic_obj.source,
         }
 
-    core_fields_dict = {}
-    category_fields_dict = {}
-
-    for field_name in required_fields:
-        field_data = validated_fields[field_name]
-        if field_name in CORE_FIELDS:
-            core_fields_dict[field_name] = field_data
-        else:
-            category_fields_dict[field_name] = field_data
-
-    return {
-        "category": category,
-        "core_fields": core_fields_dict,
-        "category_fields": category_fields_dict,
-    }
+    report_obj = ReportObject(
+        category=category,
+        fields={k: FieldObject(**v) for k, v in validated_fields.items()}
+    )
+    return report_obj.model_dump()
