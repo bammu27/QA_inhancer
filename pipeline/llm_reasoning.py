@@ -6,6 +6,7 @@ from models.schemas import ReportObject, FieldObject, DeveloperNotes
 from utils.groq_client import chat_completion
 from utils.json_utils import extract_json_object
 from utils.diff_check import assert_tester_provided_unchanged, TesterProvidedMutationError
+from utils.context_fetcher import fetch_external_context
 from prompts.reasoning_prompt import build_reasoning_messages
 import config
 
@@ -31,7 +32,20 @@ def reason_and_annotate(report: dict) -> dict:
 
     missing_keys = [k for k, v in original_fields.items() if v["source"] == "missing"]
 
-    messages = build_reasoning_messages(report)
+    # --- Fetch external context (GitHub Issues + StackOverflow) ---
+    # fetch_external_context never raises; returns "" on any failure or when
+    # enrichment is disabled. build_reasoning_messages omits the context block
+    # entirely when it receives an empty string, so the LLM call is unaffected.
+    external_context = ""
+    if config.CONTEXT_ENRICHMENT_ENABLED:
+        title_value = (original_fields.get("title") or {}).get("value") or ""
+        if title_value:
+            external_context = fetch_external_context(
+                title=title_value,
+                category=report.get("category", ""),
+            )
+
+    messages = build_reasoning_messages(report, external_context=external_context)
 
     try:
         raw_response = chat_completion(messages, model=config.GROQ_MODEL_REASONING)

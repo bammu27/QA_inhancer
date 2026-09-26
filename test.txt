@@ -1,0 +1,26 @@
+
+Bug 1: bro the checkout total is totally busted i just tried using the SAVE15 promo code on my cart and it says code applied on the screen and it even displays the -5 dollars discount line item right above the total but guess what the actual grand total at the bottom of the screen is still 35 bucks which is the exact original price it didn't subtract anything from the final amount so if a customer hits pay now they are getting charged full price even though the app told them they got a discount lol someone please fix this asap before it goes to production.
+
+Bug 2: major security issue found just now if i log into the app on two different devices like my iphone and my laptop and then i go ahead and change my password on the laptop because i think my account got hacked the iphone session just stays active forever i can literally still browse around update my profile details and make API calls on the iphone even after the password was completely changed on the other device the backend tokens are definitely not clearing out when a password reset happens it should force logout everything immediately.
+
+Bug 3: screen size regression on the mobile app testing on an iphone se 3rd gen simulator and the layout is completely broken at the bottom the big blue submit application button is literally hiding underneath the main bottom navigation tab bar because it's rendering underneath the nav bar i can't even tap it it's blocked completely totally stuck on the final step of the flow because the button isn't clickable on small screens works fine on iphone 15 pro max but totally dead on smaller devices.
+
+
+Bug 4: logged in with a brand new clean test account that i just made user_test_99 and the main dashboard screen is just stuck spinning forever with that loading wheel checked the developer console network tab and the profile API is throwing a massive 500 internal server error looks like it's crashing because this new user doesn't have a secondary backup phone number saved in the database yet the backend is throwing a null pointer exception instead of just rendering an empty string or n/a for the missing number and it's locking up the whole UI.
+
+
+Bug 5: okay the admin panel just crashed hard i went to the reports section and tried to run a massive csv export for all customer transactions over the last 6 months which is around 55 thousand records the second i clicked the export button the whole website just froze up and after like a minute I got a 504 bad gateway error talked to alex from backend and he said the server memory spiked to 100 percent and threw an out of memory crash because it’s loading the entire database table into RAM at once instead of streaming it.
+
+
+Bug 6: localization issue in the email templates i switched my test profile language settings over to german to verify the translations and triggered a purchase confirmation email the email arrived but all the text is completely messed up words like Bestätigung are showing up with broken HTML code junk like BestÄtigung right in the middle of the sentence looks like the email microservice isn't configured for utf8 encoding so any word with an umlaut or an eszett is totally broken and unreadable for users.
+
+
+Bug 7: found a massive loophole in the profile picture upload field the UI file picker popup tells you that you can only choose jpg or png files which is fine but i turned on my burp suite proxy tool to intercept the network request i took a standard php web shell script renamed the file to image.jpg.php and forwarded the upload request anyway the backend just blindly accepted it and returned a 200 ok success message it's saving executable scripts directly into our public S3 bucket without validating the actual MIME type on the server side big vulnerability.
+
+
+Bug 8: chat message ordering is completely out of whack when network speed is slow i turned on 3g network throttling in chrome devtools and sent three short messages back to back really fast like hey then how are you then today because of the network lag the messages hit the database out of order so now in the chat window it displays as today then hey then how are you the frontend layout is sorting them based on when the server received them instead of using the local client timestamp when i actually typed them.
+
+Bug 9: compliance failure on the new multi factor authentication page i turned on the mac voiceover screen reader to do a quick accessibility pass and when you hit the tab key to move through the six code input boxes the screen reader just repeats edit text edit text edit text six times in a row there are absolutely no aria-labels or hidden descriptions on those input fields so a blind user has absolutely no way of knowing which box is digit 1 digit 2 etc needs proper labels added immediately.
+
+Bug 10: payment integration glitch with stripe webhooks i simulated a card decline using a faulty test credit card number in the sandbox environment the stripe dashboard shows the charge failed successfully but our internal application state never updated the user's billing dashboard is still stuck saying processing payment indefinitely instead of changing to payment failed and asking them to update their card info it looks like our webhook listener endpoint is dropping the failure event silently because of a parsing mismatch.
+

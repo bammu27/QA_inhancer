@@ -1,7 +1,7 @@
 import json
 
 
-def build_reasoning_messages(report: dict) -> list[dict]:
+def build_reasoning_messages(report: dict, external_context: str = "") -> list[dict]:
     fields = report["fields"]
 
     tester_provided = {
@@ -19,15 +19,31 @@ def build_reasoning_messages(report: dict) -> list[dict]:
         "You must NEVER invent a change to, or restate a modified version "
         "of, any field that is already confirmed — those are provided "
         "verbatim below for context only, not for you to edit. "
+        "When external context from GitHub or StackOverflow is provided, "
+        "use it to write more specific and actionable developer_notes and "
+        "common_fixes. Do not blindly repeat it — synthesise it with the "
+        "confirmed fields to produce a concise, developer-facing summary. "
         "You respond with ONLY a single JSON object — no markdown code "
         "fences, no preamble, no explanation."
     )
+
+    # Build the optional external-context block — omitted entirely when empty.
+    context_block = ""
+    if external_context.strip():
+        context_block = (
+            f"External context retrieved from GitHub and StackOverflow "
+            f"(use this to write better developer_notes and common_fixes — "
+            f"do NOT use it to infer field values unless it directly states "
+            f"the missing value unambiguously):\n"
+            f"{external_context}\n\n"
+        )
 
     user_prompt = (
         f"Bug category: {report['category']}\n\n"
         f"Confirmed fields (context only — do NOT include these in your "
         f"output, they are already final):\n"
         f"{json.dumps(tester_provided, indent=2)}\n\n"
+        f"{context_block}"
         f"Fields still missing (infer a value ONLY if the confirmed "
         f"fields above genuinely support a specific inference; otherwise "
         f'leave as null — do not guess vague filler like "unknown" or '
